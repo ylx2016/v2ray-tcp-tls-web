@@ -16,14 +16,18 @@ v2script
 ## TCP+TLS vs WS+TLS
 1. TCP+TLS has faster connection speed than WS+TLS benifit from that TCP is naturally faster than websocket
 2. TCP+TLS has lower delay by saving 1-RTT from ws handshaking
-3. TCP+TLS is not compatible with cloudflare free CDN plan as WSS does.
+3. TCP+TLS is not compatible with cloudflare free CDN plan as WSS does
+
+## For Chinese users
+1. 中文文档在[本项目 wiki 页面](https://github.com/phlinhng/v2ray-tcp-tls-web/wiki)
+2. 任何情况下都**不需要**点亮 Cloudflare 云朵，否则 TCP+TLS 无法发挥作用（云朵是灰色的情况下还是能接入 CDN 的，相信我） 
 
 ## Related work
 + [@phlinhng/v2ray-caddy-cf](https://github.com/phlinhng/v2ray-caddy-cf): automated script for v2Ray (WS+TLS+Web)
 + [Shawdowrockets 訂閱鏈接編輯器](https://www.phlinhng.com/b64-url-editor): subscription manager
 
 ## Credit
-+ [Project V](https://www.v2ray.com/)
++ [Project V](https://www.v2fly.org/)
 + [V2Ray 配置指南](https://toutyrater.github.io/)
 + [新 V2Ray 白话文指南](https://guide.v2fly.org/)
 + [templated.co](https://templated.co)

@@ -45,18 +45,34 @@ colorEcho() {
   echo -e "\033[${1}${@:2}\033[0m" 1>& 2
 }
 
-${sudoCmd} ${systemPackage} install curl -y -qq
-
 # remove v2ray
 # Notice the two dashes (--) which are telling bash to not process anything following it as arguments to bash.
 # https://stackoverflow.com/questions/4642915/passing-parameters-to-bash-when-executing-a-script-fetched-by-curl
-curl -sSL https://install.direct/go.sh | ${sudoCmd} bash -s -- --remove
+curl -sL https://install.direct/go.sh | ${sudoCmd} bash -s -- --remove
+colorEcho ${BLUE} "Shutting down v2ray service."
+${sudoCmd} systemctl stop v2ray
+${sudoCmd} systemctl disable v2ray
+${sudoCmd} rm -f /etc/systemd/system/v2ray.service
+${sudoCmd} rm -f /etc/systemd/system/v2ray.service
+${sudoCmd} rm -f /etc/systemd/system/v2ray@.service
+${sudoCmd} rm -f /etc/systemd/system/v2ray@.service
+colorEcho ${BLUE} "Removing v2ray files."
 ${sudoCmd} rm -rf /etc/v2ray
+${sudoCmd} rm -rf /usr/bin/v2ray
+${sudoCmd} rm -rf /usr/local/bin/v2ray
+${sudoCmd} rm -rf /usr/local/bin/v2ctl
+${sudoCmd} rm -rf /usr/local/etc/v2ray
+${sudoCmd} rm -rf /usr/local/lib/v2ray
+${sudoCmd} rm -rf /usr/local/share/v2ray
+${sudoCmd} rm -rf /var/log/v2ray
 ${sudoCmd} rm -rf /tmp/v2ray-ds
+colorEcho ${BLUE} "Removing v2ray user & group."
 ${sudoCmd} deluser v2ray
 ${sudoCmd} delgroup --only-if-empty v2ray
-${sudoCmd} crontab -l | grep -v 'geoip.dat' | ${sudoCmd} crontab -
-${sudoCmd} crontab -l | grep -v 'geosite.dat' | ${sudoCmd} crontab -
+colorEcho ${BLUE} "Removing v2ray crontab"
+${sudoCmd} crontab -l | grep -v 'v2ray/geoip.dat' | ${sudoCmd} crontab -
+${sudoCmd} crontab -l | grep -v 'v2ray/geosite.dat' | ${sudoCmd} crontab -
+colorEcho ${GREEN} "Removed v2ray successfully."
 
 # remove tls-shunt-server
 colorEcho ${BLUE} "Shutting down tls-shunt-proxy service."
@@ -87,10 +103,10 @@ colorEcho ${BLUE} "Removing caddy files."
 ${sudoCmd} rm -rf /usr/local/bin/caddy
 ${sudoCmd} rm -rf /usr/local/etc/caddy
 ${sudoCmd} rm -rf /usr/local/etc/ssl/caddy
-colorEcho ${BLUE} "Removing caddy user & group."
-${sudoCmd} deluser www-data
-${sudoCmd} delgroup --only-if-empty www-data
 colorEcho ${GREEN} "Removed caddy successfully."
+
+colorEcho ${BLUE} "Removing dummy site."
+${sudoCmd} rm -rf /var/www/html
 
 # remove trojan-go
 colorEcho ${BLUE} "Shutting down trojan-go service."
@@ -104,6 +120,20 @@ colorEcho ${BLUE} "Removing trojan-go files."
 ${sudoCmd} rm -rf /usr/bin/trojan-go
 ${sudoCmd} rm -rf /etc/trojan-go
 ${sudoCmd} rm -rf /etc/ssl/trojan-go
+${sudoCmd} crontab -l | grep -v 'trojan-go/geoip.dat' | ${sudoCmd} crontab -
+${sudoCmd} crontab -l | grep -v 'trojan-go/geosite.dat' | ${sudoCmd} crontab -
+colorEcho ${GREEN} "Removed trojan-go successfully."
+
+# remove mtg
+colorEcho ${BLUE} "Shutting down mtg service."
+${sudoCmd} systemctl stop mtg
+${sudoCmd} systemctl disable mtg
+${sudoCmd} rm -f /etc/systemd/system/mtg.service
+${sudoCmd} rm -f /etc/systemd/system/mtg.service # and symlinks that might be related
+${sudoCmd} systemctl daemon-reload
+${sudoCmd} systemctl reset-failed
+colorEcho ${BLUE} "Removing trojan-go files."
+${sudoCmd} rm -rf /usr/local/bin/mtg
 colorEcho ${GREEN} "Removed trojan-go successfully."
 
 # docker

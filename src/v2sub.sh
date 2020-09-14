@@ -98,14 +98,6 @@ get_docker() {
 }
 
 set_docker() {
-  if [[ $(read_json /usr/local/etc/v2script/config.json '.mtproto.installed') == "true" ]]; then
-    if [ ! "$(${sudoCmd} docker ps -q --filter ancestor=nineseconds/mtg)" ]; then
-      ${sudoCmd} docker rm $(${sudoCmd} docker stop $(${sudoCmd} docker ps -q --filter ancestor=nineseconds/mtg) 2>/dev/null) 2>/dev/null
-      # start mtproto ## reference https://raw.githubusercontent.com/9seconds/mtg/master/run.sh
-      ${sudoCmd} docker run -d --restart=always --name mtg --ulimit nofile=51200:51200 -p 127.0.0.1:3128:3128 nineseconds/mtg:latest run "$(read_json /usr/local/etc/v2script/config.json '.mtproto.secret')"
-    fi
-  fi
-
   if [[ $(read_json /usr/local/etc/v2script/config.json '.sub.api.installed') == "true" ]]; then
     if [ ! "$(${sudoCmd} docker ps -q --filter ancestor=tindy2013/subconverter)" ]; then
       ${sudoCmd} docker rm $(${sudoCmd} docker stop $(${sudoCmd} docker ps -q --filter ancestor=tindy2013/subconverter) 2>/dev/null) 2>/dev/null
@@ -124,7 +116,7 @@ set_proxy() {
   fi
 
   if [[ $(read_json /usr/local/etc/v2script/config.json '.v2ray.cloudflare') == "true" ]]; then
-    sed -i "s/FAKECDNPATH/$(read_json /etc/v2ray/config.json '.inbounds[1].streamSettings.wsSettings.path' | tr -d '/')/g" /tmp/config_new.yaml
+    sed -i "s/FAKECDNPATH/$(read_json /usr/local/etc/v2ray/config.json '.inbounds[1].streamSettings.wsSettings.path' | tr -d '/')/g" /tmp/config_new.yaml
     sed -i "s/##CDN@//g" /tmp/config_new.yaml
   fi
 
@@ -171,7 +163,7 @@ sync_nodes() {
   local TJ_DOMAIN="$(read_json /usr/local/etc/v2script/config.json '.trojan.tlsHeader')"
 
   if [[ "$(read_json /usr/local/etc/v2script/config.json '.v2ray.installed')" == "true" ]]; then
-    local uuid_tcp="$(read_json /etc/v2ray/config.json '.inbounds[0].settings.clients[0].id')"
+    local uuid_tcp="$(read_json /usr/local/etc/v2ray/config.json '.inbounds[0].settings.clients[0].id')"
     local json_tcp="{\"add\":\"${V2_DOMAIN}\",\"aid\":\"0\",\"host\":\"\",\"id\":\"${uuid_tcp}\",\"net\":\"\",\"path\":\"\",\"port\":\"443\",\"ps\":\"${v2_remark}\",\"tls\":\"tls\",\"type\":\"none\",\"v\":\"2\"}"
     local uri_tcp="$(printf %s "${json_tcp}" | base64 --wrap=0)"
     write_json /usr/local/etc/v2script/config.json '.sub.nodesList.tcp' "$(printf %s "\"vmess://${uri_tcp}\"")"
@@ -179,8 +171,8 @@ sync_nodes() {
 
   if [[ "$(read_json /usr/local/etc/v2script/config.json '.v2ray.cloudflare')" == "true" ]]; then
     local cfUrl="www.digitalocean.com"
-    local wssPath="$(read_json /etc/v2ray/config.json '.inbounds[1].streamSettings.wsSettings.path' | tr -d '/')"
-    local uuid_wss="$(read_json /etc/v2ray/config.json '.inbounds[1].settings.clients[0].id')"
+    local wssPath="$(read_json /usr/local/etc/v2ray/config.json '.inbounds[1].streamSettings.wsSettings.path' | tr -d '/')"
+    local uuid_wss="$(read_json /usr/local/etc/v2ray/config.json '.inbounds[1].settings.clients[0].id')"
     local json_wss="{\"add\":\"${cfUrl}\",\"aid\":\"0\",\"host\":\"${V2_DOMAIN}\",\"id\":\"${uuid_wss}\",\"net\":\"ws\",\"path\":\"/${wssPath}\",\"port\":\"443\",\"ps\":\"${v2_remark} (CDN)\",\"tls\":\"tls\",\"type\":\"none\",\"v\":\"2\"}"
     local uri_wss="$(printf %s "${json_wss}" | base64 --wrap=0)"
     write_json /usr/local/etc/v2script/config.json '.sub.nodesList.wss' "$(printf %s "\"vmess://${uri_wss}\"")"
@@ -188,7 +180,7 @@ sync_nodes() {
 
   if [[ "$(read_json /usr/local/etc/v2script/config.json '.trojan.installed')" == "true" ]]; then
     local uuid_trojan="$(read_json /etc/trojan-go/config.json '.password[0]')"
-    local uri_trojan="${uuid_trojan}@${TJ_DOMAIN}:443?peer=#$(urlEncode "${tj_remark}")"
+    local uri_trojan="${uuid_trojan}@${TJ_DOMAIN}:443?peer=${TJ_DOMAIN}&sni=${TJ_DOMAIN}#$(urlEncode "${tj_remark}")"
     write_json /usr/local/etc/v2script/config.json '.sub.nodesList.trojan' "$(printf %s "\"trojan://${uri_trojan}\"")"
   fi
 
@@ -211,7 +203,7 @@ sync_nodes() {
 }
 
 generate_link() {
-  if [ ! -d "/usr/bin/v2ray" ] && [ ! -d "/usr/bin/trojan-go" ]; then
+  if [[ "$(read_json /usr/local/etc/v2script/config.json '.v2ray.installed')" != "true" ]] && [[ "$(read_json /usr/local/etc/v2script/config.json '.trojan.installed')" != "true" ]]; then
     colorEcho ${RED} "尚末安装 V2Ray 或 Trojan"
     return 1
   fi
@@ -255,7 +247,7 @@ generate_link() {
 }
 
 update_link() {
-  if [ ! -d "/usr/bin/v2ray" ] && [ ! -d "/usr/bin/trojan-go" ]; then
+  if [[ "$(read_json /usr/local/etc/v2script/config.json '.v2ray.installed')" != "true" ]] && [[ "$(read_json /usr/local/etc/v2script/config.json '.trojan.installed')" != "true" ]]; then
     colorEcho ${RED} "尚末安装 V2Ray 或 Trojan"
     return 1
   fi
@@ -347,7 +339,7 @@ install_api() {
 }
 
 display_link() {
-  if [ ! -d "/usr/bin/v2ray" ] && [ ! -d "/usr/bin/trojan-go" ]; then
+  if [[ "$(read_json /usr/local/etc/v2script/config.json '.v2ray.installed')" != "true" ]] && [[ "$(read_json /usr/local/etc/v2script/config.json '.trojan.installed')" != "true" ]]; then
     colorEcho ${RED} "尚末安装 V2Ray 或 Trojan"
     return 1
   fi

@@ -26,6 +26,10 @@ colorEcho(){
   echo -e "\033[${1}${@:2}\033[0m" 1>& 2
 }
 
+red="\033[0;${RED}"
+green="\033[0;${GREEN}"
+nocolor="\033[0m"
+
 #copied & modified from atrandys trojan scripts
 #copy from 秋水逸冰 ss scripts
 if [[ -f /etc/redhat-release ]]; then
@@ -124,16 +128,17 @@ sync_nodes() {
   local TJ_DOMAIN="$(read_json /usr/local/etc/v2script/config.json '.trojan.tlsHeader')"
 
   if [[ "$(read_json /usr/local/etc/v2script/config.json '.v2ray.installed')" == "true" ]]; then
-    local uuid_tcp="$(read_json /etc/v2ray/config.json '.inbounds[0].settings.clients[0].id')"
+    local uuid_tcp="$(read_json /usr/local/etc/v2ray/config.json '.inbounds[0].settings.clients[0].id')"
     local json_tcp="{\"add\":\"${V2_DOMAIN}\",\"aid\":\"0\",\"host\":\"\",\"id\":\"${uuid_tcp}\",\"net\":\"\",\"path\":\"\",\"port\":\"443\",\"ps\":\"${v2_remark}\",\"tls\":\"tls\",\"type\":\"none\",\"v\":\"2\"}"
     local uri_tcp="$(printf %s "${json_tcp}" | base64 --wrap=0)"
     write_json /usr/local/etc/v2script/config.json '.sub.nodesList.tcp' "$(printf %s "\"vmess://${uri_tcp}\"")"
   fi
 
   if [[ "$(read_json /usr/local/etc/v2script/config.json '.v2ray.cloudflare')" == "true" ]]; then
-    local cfUrl="www.digitalocean.com"
-    local wssPath="$(read_json /etc/v2ray/config.json '.inbounds[1].streamSettings.wsSettings.path' | tr -d '/')"
-    local uuid_wss="$(read_json /etc/v2ray/config.json '.inbounds[1].settings.clients[0].id')"
+    #local cfUrl="www.digitalocean.com"
+    local cfUrl="amp.cloudflare.com"
+    local wssPath="$(read_json /usr/local/etc/v2ray/config.json '.inbounds[1].streamSettings.wsSettings.path' | tr -d '/')"
+    local uuid_wss="$(read_json /usr/local/etc/v2ray/config.json '.inbounds[1].settings.clients[0].id')"
     local json_wss="{\"add\":\"${cfUrl}\",\"aid\":\"0\",\"host\":\"${V2_DOMAIN}\",\"id\":\"${uuid_wss}\",\"net\":\"ws\",\"path\":\"/${wssPath}\",\"port\":\"443\",\"ps\":\"${v2_remark} (CDN)\",\"tls\":\"tls\",\"type\":\"none\",\"v\":\"2\"}"
     local uri_wss="$(printf %s "${json_wss}" | base64 --wrap=0)"
     write_json /usr/local/etc/v2script/config.json '.sub.nodesList.wss' "$(printf %s "\"vmess://${uri_wss}\"")"
@@ -141,7 +146,7 @@ sync_nodes() {
 
   if [[ "$(read_json /usr/local/etc/v2script/config.json '.trojan.installed')" == "true" ]]; then
     local uuid_trojan="$(read_json /etc/trojan-go/config.json '.password[0]')"
-    local uri_trojan="${uuid_trojan}@${TJ_DOMAIN}:443?peer=#$(urlEncode "${TJ_DOMAIN}")"
+    local uri_trojan="${uuid_trojan}@${TJ_DOMAIN}:443?peer=${TJ_DOMAIN}&sni=${TJ_DOMAIN}#$(urlEncode "${TJ_DOMAIN}")"
     write_json /usr/local/etc/v2script/config.json '.sub.nodesList.trojan' "$(printf %s "\"trojan://${uri_trojan}\"")"
   fi
 
@@ -216,38 +221,12 @@ subscription_prompt() {
     fi
 
     if [[ $(read_json /usr/local/etc/v2script/config.json '.trojan.installed') == "true" ]]; then
-      local tj_currentRemark="$(read_json /usr/local/etc/v2script/config.json '.sub.nodesList.trojan' | urlDecode)"
+      local tj_currentRemark="$(read_json /usr/local/etc/v2script/config.json '.sub.nodesList.trojan' | sed 's/^trojan:\/\/.+#//g' | urlDecode)"
     else
       local tj_currentRemark="null"
     fi
 
     sync_nodes "${v2_currentRemark}" "${tj_currentRemark}"
-  fi
-}
-
-get_docker() {
-  if [ ! -x "$(command -v docker)" ]; then
-    curl -sL https://get.docker.com/ | ${sudoCmd} bash
-    # install docker-compose
-    #${sudoCmd} curl -L "https://github.com/docker/compose/releases/download/1.25.4/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-    #${sudoCmd} chmod +x /usr/local/bin/docker-compose
-  fi
-}
-
-set_docker() {
-  if [[ $(read_json /usr/local/etc/v2script/config.json '.mtproto.installed') == "true" ]]; then
-    if [ ! "$(${sudoCmd} docker ps -q --filter ancestor=nineseconds/mtg)" ]; then
-      ${sudoCmd} docker rm $(${sudoCmd} docker stop $(${sudoCmd} docker ps -q --filter ancestor=nineseconds/mtg) 2>/dev/null) 2>/dev/null
-      # start mtproto ## reference https://raw.githubusercontent.com/9seconds/mtg/master/run.sh
-      ${sudoCmd} docker run -d --restart=always --name mtg --ulimit nofile=51200:51200 -p 127.0.0.1:3128:3128 nineseconds/mtg:latest run "$(read_json /usr/local/etc/v2script/config.json '.mtproto.secret')"
-    fi
-  fi
-
-  if [[ $(read_json /usr/local/etc/v2script/config.json '.sub.api.installed') == "true" ]]; then
-    if [ ! "$(${sudoCmd} docker ps -q --filter ancestor=tindy2013/subconverter)" ]; then
-      ${sudoCmd} docker rm $(${sudoCmd} docker stop $(${sudoCmd} docker ps -q --filter ancestor=tindy2013/subconverter) 2>/dev/null) 2>/dev/null
-      ${sudoCmd} docker run -d --restart=always -p 127.0.0.1:25500:25500 -v /usr/local/etc/v2script/pref.ini:/base/pref.ini tindy2013/subconverter:latest
-    fi
   fi
 }
 
@@ -258,7 +237,7 @@ get_proxy() {
     colorEcho ${GREEN} "tls-shunt-proxy is installed."
   else
     local API_URL="https://api.github.com/repos/liberal-boy/tls-shunt-proxy/releases/latest"
-    local DOWNLOAD_URL="$(curl "${PROXY}" -H "Accept: application/json" -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:74.0) Gecko/20100101 Firefox/74.0" -s "${API_URL}" --connect-timeout 10| grep 'browser_download_url' | cut -d\" -f4)"
+    local DOWNLOAD_URL="$(curl -H "Accept: application/json" -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:74.0) Gecko/20100101 Firefox/74.0" -s "${API_URL}" --connect-timeout 10| grep 'browser_download_url' | cut -d\" -f4)"
     ${sudoCmd} curl -L -H "Cache-Control: no-cache" -o "/tmp/tls-shunt-proxy.zip" "${DOWNLOAD_URL}"
     ${sudoCmd} unzip -o -d /usr/local/bin/ "/tmp/tls-shunt-proxy.zip"
     ${sudoCmd} chmod +x /usr/local/bin/tls-shunt-proxy
@@ -275,7 +254,7 @@ set_proxy() {
   fi
 
   if [[ $(read_json /usr/local/etc/v2script/config.json '.v2ray.cloudflare') == "true" ]]; then
-    sed -i "s/FAKECDNPATH/$(read_json /etc/v2ray/config.json '.inbounds[1].streamSettings.wsSettings.path' | tr -d '/')/g" /tmp/config_new.yaml
+    sed -i "s/FAKECDNPATH/$(read_json /usr/local/etc/v2ray/config.json '.inbounds[1].streamSettings.wsSettings.path' | tr -d '/')/g" /tmp/config_new.yaml
     sed -i "s/##CDN@//g" /tmp/config_new.yaml
   fi
 
@@ -400,8 +379,8 @@ set_v2ray_wss() {
   }"
 
     # setting v2ray
-    ${sudoCmd} /bin/cp /etc/v2ray/config.json /etc/v2ray/config.json.bak 2>/dev/null
-    jq -r ".inbounds += [${wssInbound}]" /etc/v2ray/config.json  > tmp.$$.json && ${sudoCmd} mv tmp.$$.json /etc/v2ray/config.json
+    ${sudoCmd} /bin/cp /usr/local/etc/v2ray/config.json /usr/local/etc/v2ray/config.json.bak 2>/dev/null
+    jq -r ".inbounds += [${wssInbound}]" /usr/local/etc/v2ray/config.json  > tmp.$$.json && ${sudoCmd} mv tmp.$$.json /usr/local/etc/v2ray/config.json
     write_json /usr/local/etc/v2script/config.json '.v2ray.cloudflare' "true"
 
     set_proxy
@@ -411,8 +390,9 @@ set_v2ray_wss() {
     ${sudoCmd} systemctl daemon-reload
 
     colorEcho ${GREEN} "设置CDN成功!"
-    local uuid_wss="$(read_json /etc/v2ray/config.json '.inbounds[1].settings.clients[0].id')"
-    local cfUrl="www.digitalocean.com"
+    #local cfUrl="www.digitalocean.com"
+    local cfUrl="amp.cloudflare.com"
+    local uuid_wss="$(read_json /usr/local/etc/v2ray/config.json '.inbounds[1].settings.clients[0].id')"
     local currentRemark="$(read_json /usr/local/etc/v2script/config.json '.sub.nodesList.tcp' | sed 's/^vmess:\/\///g' | base64 -d | jq --raw-output '.ps' | tr -d '\n')"
     local json_wss="{\"add\":\"${cfUrl}\",\"aid\":\"0\",\"host\":\"${sni}\",\"id\":\"${uuid_wss}\",\"net\":\"ws\",\"path\":\"/${wssPath}\",\"port\":\"443\",\"ps\":\"${currentRemark} (CDN)\",\"tls\":\"tls\",\"type\":\"none\",\"v\":\"2\"}"
     local uri_wss="$(printf %s "${json_wss}" | base64 --wrap=0)"
@@ -421,6 +401,7 @@ set_v2ray_wss() {
     echo "${uuid_wss} (aid: 0)"
     echo "Header: ${sni}, Path: /${wssPath}" && echo ""
     echo "vmess://${uri_wss}" | tr -d '\n' && printf "\n"
+    write_json /usr/local/etc/v2script/config.json '.sub.nodesList.wss' "$(printf %s "\"vmess://${uri_wss}\"" | tr -d '\n')"
 
     subscription_prompt
   else
@@ -451,12 +432,11 @@ set_v2ray_wss_prompt() {
 }
 
 get_v2ray() {
-  ${sudoCmd} ${systemPackage} install curl -y -qq
-  curl -sL https://install.direct/go.sh | ${sudoCmd} bash
+  curl -sL https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh | ${sudoCmd} bash
 }
 
 build_v2ray() {
-  if [ ! -d "/usr/bin/v2ray" ]; then
+  if [[ $(read_json /usr/local/etc/v2script/config.json '.v2ray.installed') != "true" ]]; then
     get_v2ray
     colorEcho ${BLUE} "Building v2ray.service for domainsocket"
     local ds_service=$(mktemp)
@@ -479,11 +459,12 @@ Type=simple
 User=v2ray
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_RAW
 NoNewPrivileges=yes
+Environment=V2RAY_LOCATION_ASSET=/usr/local/share/v2ray/
 
 ExecStartPre=$(which mkdir) -p /tmp/v2ray-ds
 ExecStartPre=$(which rm) -rf /tmp/v2ray-ds/*.sock
 
-ExecStart=/usr/bin/v2ray/v2ray -config /etc/v2ray/config.json
+ExecStart=/usr/local/bin/v2ray -config /usr/local/etc/v2ray/config.json
 
 ExecStartPost=$(which sleep) 1
 ExecStartPost=$(which chmod) 666 /tmp/v2ray-ds/v2ray.sock
@@ -499,15 +480,21 @@ WantedBy=multi-user.target
 EOF
     # add new user and overwrite v2ray.service
     # https://github.com/v2ray/v2ray-core/issues/1011
-    ${sudoCmd} useradd -d /etc/v2ray/ -M -s $(${sudoCmd} which nologin) v2ray
+    ${sudoCmd} useradd -d /usr/local/etc/v2ray/ -M -s $(${sudoCmd} which nologin) v2ray
     ${sudoCmd} mv ${ds_service} /etc/systemd/system/v2ray.service
+    ${sudoCmd} mkdir -p /var/log/v2ray
     ${sudoCmd} chown -R v2ray:v2ray /var/log/v2ray
     write_json /usr/local/etc/v2script/config.json ".v2ray.installed" "true"
     ${sudoCmd} timedatectl set-ntp true
 
+    ${sudoCmd} mkdir -p /usr/local/etc/v2ray
+    ${sudoCmd} mkdir -p /usr/local/share/v2ray
+    ${sudoCmd} wget -q https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geoip.dat -O /usr/local/share/v2ray/geoip.dat
+    ${sudoCmd} wget -q https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat -O /usr/local/share/v2ray/geosite.dat
+
     # set crontab to auto update geoip.dat and geosite.dat
-    (crontab -l 2>/dev/null; echo "0 7 * * * wget -q https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geoip.dat -O /usr/bin/v2ray/geoip.dat >/dev/null >/dev/null") | ${sudoCmd} crontab -
-    (crontab -l 2>/dev/null; echo "0 7 * * * wget -q https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat -O /usr/bin/v2ray/geosite.dat >/dev/null >/dev/null") | ${sudoCmd} crontab -
+    (crontab -l 2>/dev/null; echo "0 7 * * * wget -q https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geoip.dat -O /usr/local/share/v2ray/geoip.dat >/dev/null >/dev/null") | ${sudoCmd} crontab -
+    (crontab -l 2>/dev/null; echo "0 7 * * * wget -q https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat -O /usr/local/share/v2ray/geosite.dat >/dev/null >/dev/null") | ${sudoCmd} crontab -
   fi
 }
 
@@ -538,7 +525,7 @@ install_v2ray() {
 
   # install caddy
   ${sudoCmd} docker rm $(${sudoCmd} docker stop $(${sudoCmd} docker ps -q --filter ancestor=abiosoft/caddy) 2>/dev/null) 2>/dev/null
-  get_caddy
+  #get_caddy
 
   # prevent some bug
   ${sudoCmd} rm -rf /usr/local/etc/ssl/caddy/*
@@ -546,19 +533,19 @@ install_v2ray() {
   ${sudoCmd} rm -rf /tmp/v2ray-ds # prevent v2ray booting issues after reinstalling
 
   # create config files
-  if [[ $(read_json /etc/v2ray/config.json '.inbounds[0].streamSettings.network') != "domainsocket" ]]; then
+  if [[ $(read_json /usr/local/etc/v2ray/config.json '.inbounds[0].streamSettings.network') != "domainsocket" ]]; then
     colorEcho ${BLUE} "Setting v2Ray"
     wget -q https://raw.githubusercontent.com/phlinhng/v2ray-tcp-tls-web/${branch}/config/v2ray.json -O /tmp/v2ray.json
-    sed -i "s/FAKEPORT/$(read_json /etc/v2ray/config.json '.inbounds[0].port')/g" /tmp/v2ray.json
-    sed -i "s/FAKEUUID/$(read_json /etc/v2ray/config.json '.inbounds[0].settings.clients[0].id')/g" /tmp/v2ray.json
-    ${sudoCmd} /bin/cp -f /tmp/v2ray.json /etc/v2ray/config.json
+    sed -i "s/FAKEPORT/$(($RANDOM + 10000))/g" /tmp/v2ray.json
+    sed -i "s/FAKEUUID/$(cat '/proc/sys/kernel/random/uuid')/g" /tmp/v2ray.json
+    ${sudoCmd} /bin/cp -f /tmp/v2ray.json /usr/local/etc/v2ray/config.json
   fi
 
   colorEcho ${BLUE} "Setting tls-shunt-proxy"
   set_proxy
 
-  colorEcho ${BLUE} "Setting caddy"
-  set_caddy
+  #colorEcho ${BLUE} "Setting caddy"
+  #set_caddy
 
   colorEcho ${BLUE} "Building dummy web site"
   build_web
@@ -572,15 +559,15 @@ install_v2ray() {
   ${sudoCmd} systemctl restart v2ray 2>/dev/null ## restart v2ray to enable new config
   ${sudoCmd} systemctl enable tls-shunt-proxy
   ${sudoCmd} systemctl restart tls-shunt-proxy ## restart tls-shunt-proxy to enable new config
-  ${sudoCmd} systemctl enable caddy
-  ${sudoCmd} systemctl restart caddy
+  #${sudoCmd} systemctl enable caddy
+  #${sudoCmd} systemctl restart caddy
   ${sudoCmd} systemctl daemon-reload
   ${sudoCmd} systemctl reset-failed
 
   colorEcho ${GREEN} "安装 TCP+TLS+WEB 成功!"
 
   local V2_DOMAIN="$(read_json /usr/local/etc/v2script/config.json '.v2ray.tlsHeader')"
-  local uuid_tcp="$(read_json /etc/v2ray/config.json '.inbounds[0].settings.clients[0].id')"
+  local uuid_tcp="$(read_json /usr/local/etc/v2ray/config.json '.inbounds[0].settings.clients[0].id')"
   local json_tcp="{\"add\":\"${V2_DOMAIN}\",\"aid\":\"0\",\"host\":\"\",\"id\":\"${uuid_tcp}\",\"net\":\"\",\"path\":\"\",\"port\":\"443\",\"ps\":\"${V2_DOMAIN}\",\"tls\":\"tls\",\"type\":\"none\",\"v\":\"2\"}"
   local uri_tcp="$(printf %s "${json_tcp}" | base64 --wrap=0)"
   write_json /usr/local/etc/v2script/config.json '.sub.nodesList.tcp' "$(printf %s "\"vmess://${uri_tcp}\"" | tr -d '\n')"
@@ -608,27 +595,24 @@ get_trojan() {
     echo "${latest_version}"
     local trojango_link="https://github.com/p4gefau1t/trojan-go/releases/download/${latest_version}/trojan-go-linux-amd64.zip"
 
-    ${sudoCmd} mkdir -p "/usr/bin/trojan-go"
     ${sudoCmd} mkdir -p "/etc/trojan-go"
-    ${sudoCmd} mkdir -p "/etc/ssl/trojan-go"
+    #${sudoCmd} mkdir -p "/etc/ssl/trojan-go"
 
     cd $(mktemp -d)
     wget -nv "${trojango_link}" -O trojan-go.zip
     unzip -q trojan-go.zip && rm -rf trojan-go.zip
-    ${sudoCmd} mv trojan-go /usr/bin/trojan-go/trojan-go
+    ${sudoCmd} mv trojan-go /usr/bin/trojan-go
     write_json /usr/local/etc/v2script/config.json ".trojan.installed" "true"
 
     colorEcho ${BLUE} "Building trojan-go.service"
     ${sudoCmd} mv example/trojan-go.service /etc/systemd/system/trojan-go.service
 
-    ${sudoCmd} wget -q https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geoip.dat -O /usr/bin/trojan-go/geoip.dat
-    ${sudoCmd} wget -q https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat -O /usr/bin/trojan-go/geosite.dat
-    ${sudoCmd} wget -q https://raw.githubusercontent.com/phlinhng/v2ray-tcp-tls-web/${branch}/custom/trojan.crt -O /etc/ssl/trojan-go/server.crt && ${sudoCmd} chmod 444 /etc/ssl/trojan-go/server.crt
-    ${sudoCmd} wget -q https://raw.githubusercontent.com/phlinhng/v2ray-tcp-tls-web/${branch}/custom/trojan.key -O /etc/ssl/trojan-go/server.key && ${sudoCmd} chmod 444 /etc/ssl/trojan-go/server.key
+    ${sudoCmd} wget -q https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geoip.dat -O /usr/bin/geoip.dat
+    ${sudoCmd} wget -q https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat -O /usr/bin/geosite.dat
 
     # set crontab to auto update geoip.dat and geosite.dat
-    (crontab -l 2>/dev/null; echo "0 7 * * * wget -q https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geoip.dat -O /usr/bin/trojan-go/geoip.dat >/dev/null >/dev/null") | ${sudoCmd} crontab -
-    (crontab -l 2>/dev/null; echo "0 7 * * * wget -q https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat -O /usr/bin/trojan-go/geosite.dat >/dev/null >/dev/null") | ${sudoCmd} crontab -
+    (crontab -l 2>/dev/null; echo "0 7 * * * wget -q https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geoip.dat -O /usr/bin/geoip.dat >/dev/null >/dev/null") | ${sudoCmd} crontab -
+    (crontab -l 2>/dev/null; echo "0 7 * * * wget -q https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat -O /usr/bin/geosite.dat >/dev/null >/dev/null") | ${sudoCmd} crontab -
 
     colorEcho ${GREEN} "trojan-go is installed."
   else
@@ -640,7 +624,25 @@ get_trojan() {
     cd $(mktemp -d)
     wget -nv "${trojango_link}" -O trojan-go.zip
     unzip trojan-go.zip
-    ${sudoCmd} mv trojan-go /usr/bin/trojan-go/trojan-go
+    ${sudoCmd} mv trojan-go /usr/bin/trojan-go
+
+    # migrate from v0.6.0 to v0.7+
+    if [ -d "/usr/bin/trojan-go" ];then
+      ${sudoCmd} mv /usr/bin/trojan-go/geoip.dat /usr/bin/geoip.dat
+      ${sudoCmd} mv /usr/bin/trojan-go/geosite.dat /usr/bin/geosite.dat
+      ${sudoCmd} rm -rf /usr/bin/trojan-go
+
+      ${sudoCmd} crontab -l | grep -v 'trojan-go/geoip.dat' | ${sudoCmd} crontab -
+      ${sudoCmd} crontab -l | grep -v 'trojan-go/geosite.dat' | ${sudoCmd} crontab -
+
+      (crontab -l 2>/dev/null; echo "0 7 * * * wget -q https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geoip.dat -O /usr/bin/geoip.dat >/dev/null >/dev/null") | ${sudoCmd} crontab -
+      (crontab -l 2>/dev/null; echo "0 7 * * * wget -q https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat -O /usr/bin/geosite.dat >/dev/null >/dev/null") | ${sudoCmd} crontab -
+
+      ${sudoCmd} mv example/trojan-go.service /etc/systemd/system/trojan-go.service
+      ${sudoCmd} systemctl daemon-reload
+      ${sudoCmd} systemctl enable trojan-go
+      ${sudoCmd} systemctl restart trojan-go
+    fi
   fi
 }
 
@@ -678,10 +680,10 @@ install_trojan() {
   colorEcho ${BLUE} "Setting tls-shunt-proxy"
   set_proxy
 
-  get_caddy
+  #get_caddy
 
-  colorEcho ${BLUE} "Setting caddy"
-  set_caddy
+  #colorEcho ${BLUE} "Setting caddy"
+  #set_caddy
 
   colorEcho ${BLUE} "Building dummy web site"
   build_web
@@ -692,15 +694,15 @@ install_trojan() {
   ${sudoCmd} systemctl restart trojan-go 2>/dev/null ## restart trojan-go to enable new config
   ${sudoCmd} systemctl enable tls-shunt-proxy
   ${sudoCmd} systemctl restart tls-shunt-proxy ## restart tls-shunt-proxy to enable new config
-  ${sudoCmd} systemctl enable caddy
-  ${sudoCmd} systemctl restart caddy
+  #${sudoCmd} systemctl enable caddy
+  #${sudoCmd} systemctl restart caddy
   ${sudoCmd} systemctl daemon-reload
   ${sudoCmd} systemctl reset-failed
 
   colorEcho ${GREEN} "安装 trojan-go 成功!"
 
   local uuid_trojan="$(read_json /etc/trojan-go/config.json '.password[0]')"
-  local uri_trojan="${uuid_trojan}@${TJ_DOMAIN}:443?peer=#$(urlEncode "${TJ_DOMAIN}")"
+  local uri_trojan="${uuid_trojan}@${TJ_DOMAIN}:443?peer=${TJ_DOMAIN}&sni=${TJ_DOMAIN}#$(urlEncode "${TJ_DOMAIN}")"
   write_json /usr/local/etc/v2script/config.json '.sub.nodesList.trojan' "$(printf %s "\"trojan://${uri_trojan}\"")"
 
   printf '%s\n\n' "trojan://${uri_trojan}"
@@ -722,17 +724,44 @@ display_mtproto() {
   fi
 }
 
+get_mtg() {
+  local latest_version="$(curl -s "https://api.github.com/repos/9seconds/mtg/releases" | jq '.[0].tag_name' --raw-output)"
+  echo "${latest_version}"
+  ${sudoCmd} wget -nv https://github.com/9seconds/mtg/releases/download/${latest_version}/mtg-linux-amd64 -O /usr/local/bin/mtg
+  ${sudoCmd} chmod +x /usr/local/bin/mtg
+}
+
+set_mtg() {
+  local mtg_service=$(mktemp)
+  cat > ${mtg_service} <<-EOF
+[Unit]
+Description=MTG - Bullshit-free MTPROTO proxy for Telegram
+Documentation=https://github.com/9seconds/mtg
+After=network.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/mtg run $(read_json /usr/local/etc/v2script/config.json '.mtproto.secret') --bind 127.0.0.1:3128
+Restart=on-failure
+RestartSec=10
+RestartPreventExitStatus=23
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  ${sudoCmd} mv ${mtg_service} /etc/systemd/system/mtg.service
+}
+
 install_mtproto() {
   if [[ $(read_json /usr/local/etc/v2script/config.json '.mtproto.installed') != "true" ]]; then
     get_proxy
-    get_docker
-
-    # pre-run this to pull image
-    ${sudoCmd} docker run --rm nineseconds/mtg generate-secret tls -c "www.fast.com" >/dev/null
+    get_mtg
 
     # generate random header from txt files
     local FAKE_TLS_HEADER="$(curl -s https://raw.githubusercontent.com/phlinhng/my-scripts/master/text/mainland_cdn.txt | shuf -n 1)"
-    local secret="$(${sudoCmd} docker run --rm nineseconds/mtg generate-secret tls -c ${FAKE_TLS_HEADER})"
+    local secret="$(${sudoCmd} mtg generate-secret tls -c ${FAKE_TLS_HEADER})"
 
     # writing configurations & setting tls-shunt-proxy
     write_json "/usr/local/etc/v2script/config.json" ".mtproto.installed" "true"
@@ -740,11 +769,11 @@ install_mtproto() {
     write_json "/usr/local/etc/v2script/config.json" ".mtproto.secret" "\"${secret}\""
 
     set_proxy
-    set_docker
+    set_mtg
 
     # activate service
-    ${sudoCmd} systemctl enable docker
-    ${sudoCmd} systemctl start docker
+    ${sudoCmd} systemctl enable mtg
+    ${sudoCmd} systemctl start mtg
     ${sudoCmd} systemctl enable tls-shunt-proxy
     ${sudoCmd} systemctl restart tls-shunt-proxy
     ${sudoCmd} systemctl daemon-reload
@@ -758,6 +787,30 @@ vps_tools() {
   ${sudoCmd} ${systemPackage} install wget -y -qq
   wget -q https://raw.githubusercontent.com/phlinhng/v2ray-tcp-tls-web/${branch}/tools/vps_tools.sh -O /tmp/vps_tools.sh && chmod +x /tmp/vps_tools.sh && ${sudoCmd} /tmp/vps_tools.sh
   exit 0
+}
+
+cert_status() {
+  printf "\n"
+
+  if [[ "$(read_json /usr/local/etc/v2script/config.json '.v2ray.installed')" == "true" ]];then
+    local V2_DOMAIN=`read_json /usr/local/etc/v2script/config.json '.v2ray.tlsHeader'`
+    if [ -d "/etc/ssl/tls-shunt-proxy/certificates/acme-v02.api.letsencrypt.org-directory/${V2_DOMAIN}" ]; then
+      printf "%s\t%s\t${green}%s${nocolor}\n" "[V2Ray]" "${V2_DOMAIN}" "正常" | expand -t 16
+    else
+      printf "%s\t%s\t${red}%s${nocolor}\n" "[V2Ray]" "${V2_DOMAIN}" "异常" | expand -t 16
+    fi
+  fi
+
+  if [[ "$(read_json /usr/local/etc/v2script/config.json '.trojan.installed')" == "true" ]];then
+    local TJ_DOMAIN=`read_json /usr/local/etc/v2script/config.json '.trojan.tlsHeader'`
+    if [ -d "/etc/ssl/tls-shunt-proxy/certificates/acme-v02.api.letsencrypt.org-directory/${TJ_DOMAIN}" ]; then
+      printf "%s\t%s\t${green}%s${nocolor}\n" "[Trojan]" "${TJ_DOMAIN}" "正常" | expand -t 16
+    else
+      printf "%s\t%s\t${red}%s${nocolor}\n" "[Trojan]" "${TJ_DOMAIN}" "异常" | expand -t 16
+    fi
+  fi
+
+  printf "\n"
 }
 
 check_status() {
@@ -810,7 +863,7 @@ show_menu() {
   echo ""
   echo "----------安装代理----------"
   echo "0) 安装 V2Ray TCP+TLS+WEB"
-  echo "1) 安装 trojan-go"
+  echo "1) 安装 Trojan-go"
   echo "----------显示配置----------"
   echo "2) 显示链接"
   echo "3) 管理订阅"
@@ -818,11 +871,12 @@ show_menu() {
   echo "4) 设置 CDN"
   echo "5) 设置电报代理"
   echo "6) VPS 工具"
+  echo "7) 检查证书状态"
   echo "----------组件管理----------"
-  echo "7) 更新 v2ray-core"
-  echo "8) 更新 tls-shunt-proxy"
-  echo "9) 更新 trojan-go"
-  echo "10) 卸载脚本"
+  echo "8) 更新 v2ray-core"
+  echo "9) 更新 tls-shunt-proxy"
+  echo "10) 更新 trojan-go"
+  echo "11) 卸载脚本"
   echo ""
 }
 
@@ -846,10 +900,11 @@ menu() {
       "4") set_v2ray_wss_prompt && continue_prompt ;;
       "5") install_mtproto && continue_prompt ;;
       "6") vps_tools ;;
-      "7") get_v2ray && continue_prompt ;;
-      "8") get_proxy && continue_prompt ;;
-      "9") get_trojan && continue_prompt ;;
-      "10") rm_v2script ;;
+      "7") cert_status && continue_prompt ;;
+      "8") get_v2ray && continue_prompt ;;
+      "9") get_proxy && continue_prompt ;;
+      "10") get_trojan && continue_prompt ;;
+      "11") rm_v2script ;;
       *) break ;;
     esac
   done
